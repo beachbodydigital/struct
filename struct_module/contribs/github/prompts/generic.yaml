@@ -1,4 +1,0 @@
-structure:
-  - .github/prompts/generic.prompt.md:
-      content: |
-        Your prompt here

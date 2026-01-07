@@ -5,3 +5,12 @@ __pycache__
 *.log
 example_project/
 build/*
+dist/
+
+# MkDocs generated documentation
+site/docs/
+
+# Coverage artifacts
+.coverage
+coverage.xml
+htmlcov/

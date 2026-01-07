@@ -8,6 +8,9 @@ on:
     branches:
       - main
 
+env:
+  OPENAI_API_KEY: "my-test-key"
+
 jobs:
   build:
 
@@ -15,7 +18,7 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Set up Python 3.10
       uses: actions/setup-python@v5
@@ -33,13 +36,23 @@ jobs:
       run: flake8 --max-line-length=200 .
       continue-on-error: true
 
+    - name: Type check with mypy
+      run: |
+        mypy structkit tests
+      continue-on-error: true
+
     - name: Run tests
       env:
         REPORT_OUTPUT: md_report.md
       shell: bash
       run: |
         echo "REPORT_FILE=${REPORT_OUTPUT}" >> "$GITHUB_ENV"
-        pytest -v --md-report --md-report-flavor gfm --md-report-exclude-outcomes passed skipped xpassed --md-report-output "$REPORT_OUTPUT" --pyargs tests
+        pytest --cov=structkit --cov-branch --cov-report=xml -v --md-report --md-report-flavor gfm --md-report-exclude-outcomes passed skipped xpassed --md-report-output "$REPORT_OUTPUT" --pyargs tests
+
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
 
     - name: Output reports to the job summary when tests fail
       if: failure()

@@ -1,0 +1,108 @@
+site_name: StructKit Documentation
+site_description: Automated Project Structure Generator
+site_url: https://httpdss.github.io/structkit/
+repo_url: https://github.com/httpdss/structkit
+repo_name: httpdss/structkit
+
+theme:
+  name: material
+  logo: assets/logo.png
+  favicon: assets/favicon.png
+  palette:
+    # Palette toggle for dark mode (default)
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Default dark mode fallback
+    - scheme: slate
+      primary: teal
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+  custom_dir: overrides
+
+docs_dir: docs
+site_dir: site/docs
+
+
+
+# Navigation structure based on existing docs
+nav:
+  - Home: index.md
+  - Blog: blog/index.md
+  - Tags: tags.md
+  - Getting Started:
+    - Installation: installation.md
+    - Quick Start: quickstart.md
+    - Usage: usage.md
+  - Configuration:
+    - YAML Configuration: configuration.md
+    - Template Variables: template-variables.md
+    - File Handling: file-handling.md
+    - Mappings: mappings.md
+  - Advanced Features:
+    - Custom Structures: structures.md
+    - Hooks: hooks.md
+    - GitHub Integration: github-integration.md
+    - Schema Reference: schema.md
+  - Development:
+    - Development Setup: development.md
+    - Command-Line Completion: completion.md
+    - Contributing: contributing.md
+  - Reference:
+    - Examples: examples/index.md
+    - Articles and Tutorials: articles.md
+    - Known Issues: known-issues.md
+    - Funding: funding.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+  - social
+  - blog
+  - tags
+  - git-revision-date-localized:
+      enable_creation_date: true
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  homepage: https://httpdss.github.io/structkit/

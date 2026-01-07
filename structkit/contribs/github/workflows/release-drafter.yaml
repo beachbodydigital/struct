@@ -1,0 +1,77 @@
+files:
+  - .github/workflows/release-drafter.yaml:
+      content: |
+        name: release-drafter
+
+        on:
+          push:
+            branches:
+              - {{@ current_repo() | default_branch @}}
+
+        jobs:
+          update_release_draft:
+            runs-on: ubuntu-latest
+            permissions:
+              contents: write
+              pull-requests: write
+            steps:
+              - name: Checkout
+                uses: actions/checkout@{{@ "actions/checkout" | latest_release @}}
+                with:
+                  fetch-depth: 0
+              - uses: release-drafter/release-drafter@{{@ "release-drafter/release-drafter" | latest_release @}}
+                id: release-drafter
+                with:
+                  config-name: release-drafter.yml
+                  publish: false
+                  prerelease: false
+                env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  - .github/workflows/major-tagging.yaml:
+      content: |
+        name: major-tagging
+
+        on:
+          push:
+            tags:
+              - v** # Trigger on every tag push
+
+        jobs:
+          tag:
+            name: Move major tag
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@{{@ "actions/checkout" | latest_release @}}
+              - uses: phwt/major-tagging-action@v1
+
+  - .github/release-drafter.yml:
+      content: |
+        name-template: "v$RESOLVED_VERSION"
+        tag-template: "v$RESOLVED_VERSION"
+        categories:
+          - title: "🚀 Features"
+            labels:
+              - "feature"
+              - "enhancement"
+          - title: "🐛 Bug Fixes"
+            labels:
+              - "fix"
+              - "bugfix"
+              - "bug"
+        change-template: "- $TITLE @$AUTHOR (#$NUMBER)"
+        change-title-escapes: '\<*_&' # You can add # and @ to disable mentions, and add ` to disable code blocks.
+        version-template: "$MAJOR.$MINOR.$PATCH"
+        version-resolver:
+          major:
+            labels:
+              - "major"
+          minor:
+            labels:
+              - "minor"
+          patch:
+            labels:
+              - "patch"
+          default: patch
+        template: |
+          ## Changes
+          $CHANGES

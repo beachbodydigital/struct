@@ -1,0 +1,87 @@
+name: publish-pypi
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: 'Upload to PyPI'
+        required: false
+        default: 'true'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Check package version
+        run: |
+          # Ensure the version in pyproject.toml is equivalent to the latest git tag
+          # Read version from pyproject.toml
+          PACKAGE_VERSION=$(python -c "import tomllib; f = open('pyproject.toml', 'rb'); data = tomllib.load(f); f.close(); print(data['project']['version'])")
+          echo "Package version: $PACKAGE_VERSION"
+
+          # Go to github releases to get latest tag
+          LATEST_TAG=$(curl -s https://api.github.com/repos/httpdss/structkit/releases/latest | grep 'tag_name' | cut -d\" -f4)
+          # Remove leading 'v' if present
+          LATEST_TAG=${LATEST_TAG#v}
+          echo "Latest tag: $LATEST_TAG"
+
+          if [ "$PACKAGE_VERSION" != "$LATEST_TAG" ]; then
+            echo "Error: Package version ($PACKAGE_VERSION) does not match latest git tag ($LATEST_TAG)"
+            exit 1
+          fi
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build setuptools wheel
+
+      - name: Build distribution
+        run: python -m build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.upload == 'true')
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: distribution
+          path: dist/
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install Twine
+        run: pip install twine
+
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: twine upload dist/* --skip-existing
+
+      - name: Put pypi url on job summary
+        run: |
+          echo "## PyPI Package Published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The package has been published to [PyPI](https://pypi.org/project/structkit/)." >> $GITHUB_STEP_SUMMARY
