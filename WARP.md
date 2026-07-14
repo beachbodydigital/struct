@@ -151,6 +151,11 @@ docs(api): update template variables documentation
 7. Link related issues: "Closes #123"
 8. Request review from maintainers
 
+### Warp Agent Behavior
+
+- Do NOT include Warp conversation links, plan links, or any Warp-specific references in PR descriptions, commit messages, or any other user-visible content.
+- Do NOT add co-author lines referencing Warp or `oz-agent@warp.dev` to commit messages.
+
 ## 🧪 Testing Guidelines
 
 ### Test Structure
@@ -273,7 +278,7 @@ pre-commit run --all-files
 1. Create YAML file in `structkit/contribs/`
 2. Follow naming convention: `project-type.yaml`
 3. Include comprehensive variable definitions
-4. Add example in `docs/examples/`
+4. Add a docs entry in `docs/examples/` and, for reusable examples, a runnable template under `examples/`
 5. Update `structkit list` output
 
 ## 🐛 Troubleshooting

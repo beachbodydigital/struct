@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from structkit.template_renderer import TemplateRenderer
+from structkit.template_renderer import TemplateRenderer, TemplateVariableError
 
 @pytest.fixture
 def renderer():
@@ -204,3 +204,103 @@ def test_variable_icon_selection():
     assert renderer._get_variable_icon("version", "string") == "🏷️"
     assert renderer._get_variable_icon("config_path", "string") == "📁"
     assert renderer._get_variable_icon("random_var", "string") == "🔧"
+
+
+def test_enum_missing_value_has_clean_error(tmp_path):
+    config_variables = [
+        {"environment": {
+            "type": "string",
+            "description": "Target deployment environment",
+            "enum": ["dev", "staging", "prod"],
+        }}
+    ]
+    renderer = TemplateRenderer(
+        config_variables,
+        str(tmp_path / "input.json"),
+        non_interactive=True,
+    )
+
+    with pytest.raises(TemplateVariableError) as excinfo:
+        renderer.prompt_for_missing_vars("{{@ environment @}}", {})
+
+    message = str(excinfo.value)
+    assert "Variable 'environment' must be set to one of: dev, staging, prod" in message
+    assert "No value was provided" in message
+    assert "--vars environment=<value>" in message
+
+
+def test_enum_invalid_value_has_clean_error(tmp_path):
+    config_variables = [
+        {"environment": {
+            "type": "string",
+            "enum": ["dev", "staging", "prod"],
+        }}
+    ]
+    renderer = TemplateRenderer(
+        config_variables,
+        str(tmp_path / "input.json"),
+        non_interactive=True,
+    )
+
+    with pytest.raises(TemplateVariableError) as excinfo:
+        renderer.prompt_for_missing_vars("{{@ environment @}}", {"environment": "qa"})
+
+    assert str(excinfo.value) == "Variable 'environment' must be one of: dev, staging, prod. Got: qa."
+
+
+def test_regex_violation_raises_template_variable_error(tmp_path):
+    """Regex pattern mismatch raises TemplateVariableError, not plain ValueError."""
+    config_variables = [
+        {"slug": {"type": "string", "pattern": "^[a-z0-9-]+$"}}
+    ]
+    renderer = TemplateRenderer(
+        config_variables,
+        str(tmp_path / "input.json"),
+        non_interactive=True,
+    )
+
+    with pytest.raises(TemplateVariableError) as excinfo:
+        renderer.prompt_for_missing_vars("{{@ slug @}}", {"slug": "Invalid Slug!"})
+
+    msg = str(excinfo.value)
+    assert "slug" in msg
+    assert "^[a-z0-9-]+$" in msg
+    assert "Invalid Slug!" in msg
+
+
+def test_min_violation_raises_template_variable_error(tmp_path):
+    """Value below min raises TemplateVariableError, not plain ValueError."""
+    config_variables = [
+        {"retries": {"type": "integer", "min": 1, "max": 10}}
+    ]
+    renderer = TemplateRenderer(
+        config_variables,
+        str(tmp_path / "input.json"),
+        non_interactive=True,
+    )
+
+    with pytest.raises(TemplateVariableError) as excinfo:
+        renderer.prompt_for_missing_vars("{{@ retries @}}", {"retries": 0})
+
+    msg = str(excinfo.value)
+    assert "retries" in msg
+    assert ">= 1" in msg
+
+
+def test_max_violation_raises_template_variable_error(tmp_path):
+    """Value above max raises TemplateVariableError, not plain ValueError."""
+    config_variables = [
+        {"retries": {"type": "integer", "min": 1, "max": 10}}
+    ]
+    renderer = TemplateRenderer(
+        config_variables,
+        str(tmp_path / "input.json"),
+        non_interactive=True,
+    )
+
+    with pytest.raises(TemplateVariableError) as excinfo:
+        renderer.prompt_for_missing_vars("{{@ retries @}}", {"retries": 99})
+
+    msg = str(excinfo.value)
+    assert "retries" in msg
+    assert "<= 10" in msg

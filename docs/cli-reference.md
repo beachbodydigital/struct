@@ -1,15 +1,15 @@
 # CLI Reference
 
-This document provides a reference for the `struct` command-line interface (CLI).
+This document provides a reference for the `structkit` command-line interface (CLI).
 
 ## Overview
 
-The `struct` CLI allows you to generate project structures from YAML configuration files. It supports both built-in structure definitions and custom structures.
+The `structkit` CLI allows you to generate project structures from YAML configuration files. It supports both built-in structure definitions and custom structures.
 
 **Basic Usage:**
 
 ```sh
-structkit {info,validate,generate,list,generate-schema,mcp,completion,init} ...
+structkit {info,validate,generate,explain,vars,graph,list,sources,generate-schema,mcp,completion,init} ...
 ```
 
 ## Global Options
@@ -27,6 +27,8 @@ The following environment variables can be used to configure default values for 
 
 - `STRUCTKIT_LOG_LEVEL`: Set the default logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL). Overridden by the `--log` flag.
 - `STRUCTKIT_STRUCTURES_PATH`: Set the default path to structure definitions. This is used as the default value for the `--structures-path` flag when not explicitly provided. When set, the CLI will log an info message indicating that this environment variable is being used.
+- `STRUCTKIT_SOURCES_CONFIG`: Override the user-level named sources config file (default: `$XDG_CONFIG_HOME/structkit/sources.yaml` or `~/.config/structkit/sources.yaml`).
+- `STRUCTKIT_SOURCES_CACHE`: Override the local cache directory used for git-backed sources (default: `$XDG_CACHE_HOME/structkit/sources` or `~/.cache/structkit/sources`).
 
 **Precedence:**
 
@@ -80,6 +82,38 @@ structkit validate [-h] [-l LOG] [-c CONFIG_FILE] [-i LOG_FILE] yaml_file
 
 - `yaml_file`: Path to the YAML configuration file.
 
+### `lint`
+
+Run stricter quality checks against one or more StructKit YAML files or structure names. `validate` checks whether a structure is syntactically usable; `lint` adds quality and safety checks that can flag risky, ambiguous, or inconsistent definitions.
+
+**Usage:**
+
+```sh
+structkit lint [-h] [-l LOG] [-c CONFIG_FILE] [-i LOG_FILE] [-s STRUCTURES_PATH] [--all] [--json] [targets ...]
+```
+
+**Arguments:**
+
+- `targets`: One or more built-in structure names, custom structure names, or local `.yaml`/`.yml` files.
+- `-s STRUCTURES_PATH, --structures-path STRUCTURES_PATH`: Path to custom structure definitions. Can be set via the `STRUCTKIT_STRUCTURES_PATH` environment variable.
+- `--all`: Lint all bundled contrib structures.
+- `--json`: Print machine-readable JSON containing `summary` counts and individual `issues`.
+
+**Rules and exit behavior:**
+
+- Errors: invalid YAML, missing targets, missing files, non-mapping top-level YAML, invalid variable/hook shapes, duplicate variables, duplicate file/folder entries, template syntax errors, undefined template variables, and clearly destructive hooks such as filesystem-root removal.
+- Warnings: missing top-level descriptions, declared variables that are never referenced, suspicious hooks, unpinned GitHub remote URLs, and variable naming convention issues.
+- The command exits with status `1` when one or more lint errors are found. Warnings alone do not cause a non-zero exit.
+
+Examples:
+
+```sh
+structkit lint .struct.yaml
+structkit lint structkit/contribs/project/python.yaml
+structkit lint --all
+structkit lint .struct.yaml --json
+```
+
 ### `generate`
 
 Generate the project structure.
@@ -103,7 +137,8 @@ structkit generate
 
 - `structure_definition` (optional): Path to the YAML configuration file (default: `.struct.yaml`).
 - `base_path` (optional): Base path where the structure will be created (default: `.`).
-- `-s STRUCTURES_PATH, --structures-path STRUCTURES_PATH`: Path to structure definitions. Can be set via the `STRUCTKIT_STRUCTURES_PATH` environment variable. When using the environment variable (and no explicit CLI flag), an info-level log message will be emitted indicating which path is being used.
+- `-s STRUCTURES_PATH, --structures-path STRUCTURES_PATH`: Path to structure definitions. Can be set via the `STRUCTKIT_STRUCTURES_PATH` environment variable. When using the environment variable (and no explicit CLI flag), an info-level log message will be emitted indicating which path is being used. Takes precedence over named sources.
+- `--source SOURCE`: Named source to use when resolving structure definitions. You can also use `<source>/<structure>` as the structure definition.
 - `-n INPUT_STORE, --input-store INPUT_STORE`: Path to the input store.
 - `-d, --dry-run`: Perform a dry run without creating any files or directories.
 - `--diff`: Show unified diffs for files that would be created/modified (works with `--dry-run` and in `-o console` mode).
@@ -115,6 +150,86 @@ structkit generate
 - `--mappings-file MAPPINGS_FILE`: Path to a YAML file containing mappings to be used in templates (can be specified multiple times).
 - `-o {console,file}, --output {console,file}`: Output mode.
 
+
+### `explain`
+
+Preview how a structure definition resolves before generation. Unlike `generate --dry-run`, `explain` is structure-focused: it lists the files, folders, nested structures, remote file references, declared variables, resolved values, hooks, and conflict behavior without fetching remote content, creating directories, writing files, or executing hooks.
+
+**Usage:**
+
+```sh
+structkit explain [-h] [-l LOG] [-c CONFIG_FILE] [-i LOG_FILE] [-s STRUCTURES_PATH] [-v VARS] [-f {overwrite,skip,append,rename,backup}] [--json] structure_definition [base_path]
+```
+
+**Arguments:**
+
+- `structure_definition`: Built-in structure name, custom structure name, or local YAML file path. Local `.yaml` and `.yml` files can be passed directly, or with `file://`.
+- `base_path` (optional): Base path used to resolve generated paths and existing-file conflict behavior (default: `.`).
+- `-s STRUCTURES_PATH, --structures-path STRUCTURES_PATH`: Path to custom structure definitions. Can be set via the `STRUCTKIT_STRUCTURES_PATH` environment variable.
+- `-v VARS, --vars VARS`: Template variables in the format `KEY1=value1,KEY2=value2`; these are shown as resolved values and are used for nested `folders[].with` values.
+- `-f {overwrite,skip,append,rename,backup}, --file-strategy {overwrite,skip,append,rename,backup}`: Strategy to report when a generated file already exists.
+- `--json`: Print a machine-readable JSON explanation.
+
+Examples:
+
+```sh
+structkit explain terraform/modules/generic
+structkit explain ./my-struct.yaml --vars project_name=demo
+structkit explain project/python --json
+```
+
+### `vars`
+
+Inspect variables declared by a structure definition without generating files.
+
+**Usage:**
+
+```sh
+structkit vars [-h] [-l LOG] [-c CONFIG_FILE] [-i LOG_FILE] [-s STRUCTURES_PATH] [--json] structure_definition
+```
+
+**Arguments:**
+
+- `structure_definition`: Built-in structure name, custom structure name, or local YAML file path. Local `.yaml` and `.yml` files can be passed directly, or with `file://`.
+- `-s STRUCTURES_PATH, --structures-path STRUCTURES_PATH`: Path to custom structure definitions. Can be set via the `STRUCTKIT_STRUCTURES_PATH` environment variable.
+- `--json`: Print machine-readable JSON with each variable's name, type, default value, description/help text, and required status.
+
+Examples:
+
+```sh
+structkit vars project/python
+structkit vars ./my-struct.yaml --json
+structkit vars python-basic --structures-path ~/custom-structures
+```
+
+
+### `graph`
+
+Visualize dependency relationships between structure definitions. The command follows nested structure references declared in `folders[].struct` or `folders[].structkit`, reports missing references, and detects cycles.
+
+**Usage:**
+
+```sh
+structkit graph [-h] [-l LOG] [-c CONFIG_FILE] [-i LOG_FILE] [-s STRUCTURES_PATH] [--all] [--format {text,json,mermaid}] [structure_definition]
+```
+
+**Arguments:**
+
+- `structure_definition`: Built-in structure name, custom structure name, or local YAML file path. Local `.yaml` and `.yml` files can be passed directly, or with `file://`.
+- `-s STRUCTURES_PATH, --structures-path STRUCTURES_PATH`: Path to custom structure definitions. Can be set via the `STRUCTKIT_STRUCTURES_PATH` environment variable.
+- `--all`: Graph every available built-in and custom structure.
+- `--format {text,json,mermaid}`: Output a human-readable tree, machine-readable JSON, or Mermaid flowchart syntax (default: `text`).
+
+Examples:
+
+```sh
+structkit graph project/python
+structkit graph terraform/apps/generic --format mermaid
+structkit graph --all --format json
+```
+
+Mermaid output starts with `graph TD` and can be pasted into Markdown documentation that supports Mermaid diagrams.
+
 ### `list`
 
 List available structures.
@@ -122,12 +237,48 @@ List available structures.
 **Usage:**
 
 ```sh
-structkit list [-h] [-l LOG] [-c CONFIG_FILE] [-i LOG_FILE] [-s STRUCTURES_PATH]
+structkit list [-h] [-l LOG] [-c CONFIG_FILE] [-i LOG_FILE] [-s STRUCTURES_PATH] [--source SOURCE]
 ```
 
 **Arguments:**
 
-- `-s STRUCTURES_PATH, --structures-path STRUCTURES_PATH`: Path to structure definitions.
+- `-s STRUCTURES_PATH, --structures-path STRUCTURES_PATH`: Path to structure definitions. Takes precedence over named sources.
+- `--source SOURCE`: Named source to list.
+
+### `sources`
+
+Manage named custom structure sources. Sources support local filesystem directories, GitHub repositories, and git-backed repositories.
+
+**Usage:**
+
+```sh
+structkit sources [--config-path CONFIG_PATH] {list,add,remove,show,validate} ...
+structkit sources add NAME PATH_OR_URL
+structkit sources remove NAME
+structkit sources show NAME
+structkit sources validate NAME
+structkit sources list
+```
+
+**Arguments:**
+
+- `--config-path CONFIG_PATH`: Override the sources config file for this command.
+- `NAME`: Source name.
+- `PATH_OR_URL`: Local directory, GitHub repository shorthand (`owner/repo`), `github://owner/repo`, or git URL to use as a structure source. GitHub sources may include an optional ref and subdirectory, for example `github://owner/repo@v1/structures`.
+
+**Examples:**
+
+```sh
+structkit sources add company ./templates
+structkit sources add platform httpdss/platform-structures
+structkit sources add versioned github://httpdss/platform-structures@v1/structures
+structkit list --source company
+structkit generate company/project/python ./app
+```
+
+Git-backed sources are cloned into the StructKit sources cache and refreshed with `git fetch` when resolved or validated.
+
+Resolution precedence is `--structures-path`/`STRUCTKIT_STRUCTURES_PATH`, then `--source` or `<source>/<structure>`, then bundled structures.
 
 ### `generate-schema`
 

@@ -6,19 +6,35 @@ This module provides MCP (Model Context Protocol) support for:
 2. Getting detailed information about structures
 3. Generating structures with various options
 4. Validating structure configurations
+5. Inspecting structure variables
+6. Explaining structure resolution without generating files
+7. Linting structure definitions for quality and safety issues
+8. Visualizing structure dependency graphs
 """
 import asyncio
 import logging
 import os
 import sys
 import yaml
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastmcp import FastMCP
 
 from structkit.commands.generate import GenerateCommand
 from structkit.commands.validate import ValidateCommand
+from structkit.commands.lint import LintCommand
+from structkit.commands.vars import VarsCommand
+from structkit.commands.explain import ExplainCommand
+from structkit.commands.graph import GraphCommand
 from structkit import __version__
+from structkit.sources import (
+    SourceError,
+    add_source,
+    read_sources,
+    remove_source,
+    resolve_structures_path,
+    validate_source_path,
+)
 
 
 class StructMCPServer:
@@ -119,7 +135,13 @@ class StructMCPServer:
         dry_run: bool = False,
         mappings: Optional[Dict[str, str]] = None,
         structures_path: Optional[str] = None,
+        source: Optional[str] = None,
     ) -> str:
+        try:
+            structures_path, structure_definition = resolve_structures_path(structures_path, source, structure_definition)
+        except SourceError as exc:
+            return f"Error: {exc}"
+
         class Args:
             pass
         args = Args()
@@ -156,16 +178,53 @@ class StructMCPServer:
                 GenerateCommand(dummy_parser).execute(args)
                 text = buf.getvalue()
                 return text.strip() or "Structure generation completed successfully"
+            except SystemExit as exc:
+                text = buf.getvalue().strip()
+                return text or f"Error: structure generation failed with exit code {exc.code}"
             finally:
                 sys.stdout = old
         else:
             # Create a dummy parser for GenerateCommand
             import argparse
             dummy_parser = argparse.ArgumentParser()
-            GenerateCommand(dummy_parser).execute(args)
+            try:
+                GenerateCommand(dummy_parser).execute(args)
+            except SystemExit as exc:
+                return f"Error: structure generation failed with exit code {exc.code}"
             if dry_run:
                 return f"Dry run completed for structure '{structure_definition}' at '{base_path}'"
             return f"Structure '{structure_definition}' generated successfully at '{base_path}'"
+
+    def _explain_structure_logic(
+        self,
+        structure_definition: Optional[str],
+        base_path: str = ".",
+        structures_path: Optional[str] = None,
+        vars: Optional[Dict[str, str]] = None,
+        output: str = "text",
+        file_strategy: str = "overwrite",
+    ) -> str:
+        if not structure_definition:
+            return "Error: structure_definition is required"
+
+        import argparse
+        dummy_parser = argparse.ArgumentParser()
+        explain_command = ExplainCommand(dummy_parser)
+        vars_str = None
+        if vars:
+            vars_str = ",".join([f"{k}={v}" for k, v in vars.items()])
+        explanation = explain_command.explain(
+            structure_definition,
+            base_path,
+            structures_path=structures_path,
+            vars_str=vars_str,
+            file_strategy=file_strategy,
+        )
+
+        if output == "json":
+            import json
+            return json.dumps(explanation, indent=2)
+        return explain_command.format_text(explanation)
 
     def _validate_structure_logic(self, yaml_file: Optional[str]) -> str:
         if not yaml_file:
@@ -193,6 +252,133 @@ class StructMCPServer:
         finally:
             sys.stdout = old
 
+    def _get_structure_vars_logic(
+        self,
+        structure_name: Optional[str],
+        structures_path: Optional[str] = None,
+        output: str = "text",
+    ) -> str:
+        if not structure_name:
+            return "Error: structure_name is required"
+
+        import argparse
+        from io import StringIO
+        dummy_parser = argparse.ArgumentParser()
+        vars_command = VarsCommand(dummy_parser)
+
+        config = vars_command._load_yaml_config(structure_name, structures_path)
+        if config is None:
+            return f"❗ Structure not found or could not be loaded: {structure_name}"
+        if not isinstance(config, dict):
+            return "❗ Invalid structure config: top-level YAML content must be a mapping"
+
+        try:
+            variables = vars_command._normalize_variables(config.get('variables', []))
+        except ValueError as exc:
+            return f"❗ Invalid variables config: {exc}"
+
+        if output == "json":
+            import json
+            return json.dumps(variables, indent=2)
+
+        buf = StringIO()
+        old = sys.stdout
+        sys.stdout = buf
+        try:
+            vars_command._print_text(structure_name, variables)
+            return buf.getvalue().strip()
+        finally:
+            sys.stdout = old
+
+    def _graph_structure_logic(
+        self,
+        structure_definition: Optional[str] = None,
+        structures_path: Optional[str] = None,
+        graph_all: bool = False,
+        output: str = "text",
+    ) -> str:
+        if not graph_all and not structure_definition:
+            return "Error: structure_definition is required unless graph_all is true"
+
+        import argparse
+        dummy_parser = argparse.ArgumentParser()
+        graph_command = GraphCommand(dummy_parser)
+        graph = graph_command.build_graph(
+            structure_definition=structure_definition,
+            structures_path=structures_path,
+            all_structures=graph_all,
+        )
+        return graph_command.format_graph(graph, output)
+
+
+    def _lint_structure_logic(
+        self,
+        targets: Optional[List[str]] = None,
+        structures_path: Optional[str] = None,
+        lint_all: bool = False,
+        output: str = "text",
+    ) -> str:
+        import argparse
+        dummy_parser = argparse.ArgumentParser()
+        lint_command = LintCommand(dummy_parser)
+        results = lint_command.lint(targets or [], structures_path=structures_path, lint_all=lint_all)
+        if output == "json":
+            import json
+            return json.dumps(results, indent=2)
+        from io import StringIO
+        buf = StringIO()
+        old = sys.stdout
+        sys.stdout = buf
+        try:
+            lint_command._print_text(results)
+            return buf.getvalue().strip()
+        finally:
+            sys.stdout = old
+
+    def _manage_sources_logic(
+        self,
+        action: str,
+        name: Optional[str] = None,
+        path_or_url: Optional[str] = None,
+        config_path: Optional[str] = None,
+    ) -> str:
+        try:
+            if action == "list":
+                sources = read_sources(config_path)
+                if not sources:
+                    return "No sources configured."
+                return "\n".join(f"{source_name}\t{source_path}" for source_name, source_path in sorted(sources.items()))
+            if action == "add":
+                if not name or not path_or_url:
+                    return "Error: name and path_or_url are required for add"
+                add_source(name, path_or_url, config_path)
+                return f"Added source '{name}' -> {read_sources(config_path)[name]}"
+            if action == "remove":
+                if not name:
+                    return "Error: name is required for remove"
+                remove_source(name, config_path)
+                return f"Removed source '{name}'"
+            if action == "show":
+                if not name:
+                    return "Error: name is required for show"
+                sources = read_sources(config_path)
+                if name not in sources:
+                    return f"Error: source not found: {name}"
+                return f"{name}\t{sources[name]}"
+            if action == "validate":
+                if not name:
+                    return "Error: name is required for validate"
+                sources = read_sources(config_path)
+                if name not in sources:
+                    return f"Error: source not found: {name}"
+                ok, message = validate_source_path(sources[name])
+                if not ok:
+                    return f"Error: {message}"
+                return f"Source '{name}' is valid: {message}"
+            return "Error: action must be one of list, add, remove, show, validate"
+        except SourceError as exc:
+            return f"Error: {exc}"
+
     # =====================
     # FastMCP tool registration (maps to logic above)
     # =====================
@@ -215,6 +401,57 @@ class StructMCPServer:
             self.logger.debug(f"MCP response: get_structure_info len={len(result)} preview=\n{preview}")
             return result
 
+        @self.app.tool(name="get_structure_vars", description="Inspect variables declared by a specific structure")
+        async def get_structure_vars(
+            structure_name: str,
+            structures_path: Optional[str] = None,
+            output: str = "text",
+        ) -> str:
+            self.logger.debug(
+                "MCP request: get_structure_vars args=%s",
+                {
+                    "structure_name": structure_name,
+                    "structures_path": structures_path,
+                    "output": output,
+                },
+            )
+            result = self._get_structure_vars_logic(structure_name, structures_path, output)
+            preview = result if len(result) <= 1000 else result[:1000] + f"... [truncated {len(result)-1000} chars]"
+            self.logger.debug(f"MCP response: get_structure_vars len={len(result)} preview=\n{preview}")
+            return result
+
+        @self.app.tool(name="explain_structure", description="Explain how a structure resolves without creating files or executing hooks")
+        async def explain_structure(
+            structure_definition: str,
+            base_path: str = ".",
+            structures_path: Optional[str] = None,
+            vars: Optional[Dict[str, str]] = None,
+            output: str = "text",
+            file_strategy: str = "overwrite",
+        ) -> str:
+            self.logger.debug(
+                "MCP request: explain_structure args=%s",
+                {
+                    "structure_definition": structure_definition,
+                    "base_path": base_path,
+                    "structures_path": structures_path,
+                    "vars": vars,
+                    "output": output,
+                    "file_strategy": file_strategy,
+                },
+            )
+            result = self._explain_structure_logic(
+                structure_definition,
+                base_path,
+                structures_path,
+                vars,
+                output,
+                file_strategy,
+            )
+            preview = result if len(result) <= 1000 else result[:1000] + f"... [truncated {len(result)-1000} chars]"
+            self.logger.debug(f"MCP response: explain_structure len={len(result)} preview=\n{preview}")
+            return result
+
         @self.app.tool(name="generate_structure", description="Generate a project structure using specified definition and options")
         async def generate_structure(
             structure_definition: str,
@@ -223,6 +460,7 @@ class StructMCPServer:
             dry_run: bool = False,
             mappings: Optional[Dict[str, str]] = None,
             structures_path: Optional[str] = None,
+            source: Optional[str] = None,
         ) -> str:
             self.logger.debug(
                 "MCP request: generate_structure args=%s",
@@ -233,6 +471,7 @@ class StructMCPServer:
                     "dry_run": dry_run,
                     "mappings": mappings,
                     "structures_path": structures_path,
+                    "source": source,
                 },
             )
             result = self._generate_structure_logic(
@@ -242,9 +481,74 @@ class StructMCPServer:
                 dry_run,
                 mappings,
                 structures_path,
+                source,
             )
             preview = result if len(result) <= 1000 else result[:1000] + f"... [truncated {len(result)-1000} chars]"
             self.logger.debug(f"MCP response: generate_structure len={len(result)} preview=\n{preview}")
+            return result
+
+
+        @self.app.tool(name="graph_structure", description="Visualize folders[].struct dependencies as text, JSON, or Mermaid")
+        async def graph_structure(
+            structure_definition: Optional[str] = None,
+            structures_path: Optional[str] = None,
+            graph_all: bool = False,
+            output: str = "text",
+        ) -> str:
+            self.logger.debug(
+                "MCP request: graph_structure args=%s",
+                {
+                    "structure_definition": structure_definition,
+                    "structures_path": structures_path,
+                    "graph_all": graph_all,
+                    "output": output,
+                },
+            )
+            result = self._graph_structure_logic(structure_definition, structures_path, graph_all, output)
+            preview = result if len(result) <= 1000 else result[:1000] + f"... [truncated {len(result)-1000} chars]"
+            self.logger.debug(f"MCP response: graph_structure len={len(result)} preview=\n{preview}")
+            return result
+
+        @self.app.tool(name="lint_structure", description="Lint structure YAML files for quality and safety issues")
+        async def lint_structure(
+            targets: Optional[List[str]] = None,
+            structures_path: Optional[str] = None,
+            lint_all: bool = False,
+            output: str = "text",
+        ) -> str:
+            self.logger.debug(
+                "MCP request: lint_structure args=%s",
+                {
+                    "targets": targets,
+                    "structures_path": structures_path,
+                    "lint_all": lint_all,
+                    "output": output,
+                },
+            )
+            result = self._lint_structure_logic(targets, structures_path, lint_all, output)
+            preview = result if len(result) <= 1000 else result[:1000] + f"... [truncated {len(result)-1000} chars]"
+            self.logger.debug(f"MCP response: lint_structure len={len(result)} preview=\n{preview}")
+            return result
+
+        @self.app.tool(name="manage_sources", description="Manage named custom structure sources")
+        async def manage_sources(
+            action: str,
+            name: Optional[str] = None,
+            path_or_url: Optional[str] = None,
+            config_path: Optional[str] = None,
+        ) -> str:
+            self.logger.debug(
+                "MCP request: manage_sources args=%s",
+                {
+                    "action": action,
+                    "name": name,
+                    "path_or_url": path_or_url,
+                    "config_path": config_path,
+                },
+            )
+            result = self._manage_sources_logic(action, name, path_or_url, config_path)
+            preview = result if len(result) <= 1000 else result[:1000] + f"... [truncated {len(result)-1000} chars]"
+            self.logger.debug(f"MCP response: manage_sources len={len(result)} preview=\n{preview}")
             return result
 
         @self.app.tool(name="validate_structure", description="Validate a structure configuration YAML file")
@@ -327,6 +631,103 @@ class StructMCPServer:
         result_text = self._get_structure_info_logic(structure_name, structures_path)
 
         # Mock MCP response structure
+        class MockContent:
+            def __init__(self, text):
+                self.text = text
+
+        class MockResult:
+            def __init__(self, content):
+                self.content = content
+
+        return MockResult([MockContent(result_text)])
+
+    async def _handle_get_structure_vars(self, params: Dict[str, Any]):
+        """Compatibility method for tests that expect MCP-style responses."""
+        structure_name = params.get('structure_name')
+        structures_path = params.get('structures_path')
+        output = params.get('output', 'text')
+
+        result_text = self._get_structure_vars_logic(structure_name, structures_path, output)
+
+        # Mock MCP response structure
+        class MockContent:
+            def __init__(self, text):
+                self.text = text
+
+        class MockResult:
+            def __init__(self, content):
+                self.content = content
+
+        return MockResult([MockContent(result_text)])
+
+    async def _handle_explain_structure(self, params: Dict[str, Any]):
+        """Compatibility method for tests that expect MCP-style responses."""
+        result_text = self._explain_structure_logic(
+            params.get('structure_definition'),
+            params.get('base_path', '.'),
+            params.get('structures_path'),
+            params.get('vars'),
+            params.get('output', 'text'),
+            params.get('file_strategy', 'overwrite'),
+        )
+
+        class MockContent:
+            def __init__(self, text):
+                self.text = text
+
+        class MockResult:
+            def __init__(self, content):
+                self.content = content
+
+        return MockResult([MockContent(result_text)])
+
+    async def _handle_graph_structure(self, params: Dict[str, Any]):
+        """Compatibility method for tests that expect MCP-style responses."""
+        result_text = self._graph_structure_logic(
+            params.get('structure_definition'),
+            params.get('structures_path'),
+            params.get('graph_all', False),
+            params.get('output', 'text'),
+        )
+
+        class MockContent:
+            def __init__(self, text):
+                self.text = text
+
+        class MockResult:
+            def __init__(self, content):
+                self.content = content
+
+        return MockResult([MockContent(result_text)])
+
+    async def _handle_lint_structure(self, params: Dict[str, Any]):
+        """Compatibility method for tests that expect MCP-style responses."""
+        result_text = self._lint_structure_logic(
+            params.get('targets', []),
+            params.get('structures_path'),
+            params.get('lint_all', False),
+            params.get('output', 'text'),
+        )
+
+        class MockContent:
+            def __init__(self, text):
+                self.text = text
+
+        class MockResult:
+            def __init__(self, content):
+                self.content = content
+
+        return MockResult([MockContent(result_text)])
+
+    async def _handle_manage_sources(self, params: Dict[str, Any]):
+        """Compatibility method for tests that expect MCP-style responses."""
+        result_text = self._manage_sources_logic(
+            params.get('action'),
+            params.get('name'),
+            params.get('path_or_url'),
+            params.get('config_path'),
+        )
+
         class MockContent:
             def __init__(self, text):
                 self.text = text

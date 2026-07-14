@@ -1,15 +1,64 @@
-# 🚀 StructKit: Automated Project Structure Generator
+# 🚀 StructKit: YAML-first scaffolding for teams and AI agents
 
-![StructKit Logo](./docs/assets/github-hero.gif)
+> Define project structures once in YAML, then generate consistent repos, CI files, docs, Terraform modules, and app layouts locally, in CI, or through an AI assistant via MCP.
 
-[![codecov](https://codecov.io/github/httpdss/structkit/graph/badge.svg?token=JL5WIO1C9T)](https://codecov.io/github/httpdss/struct)
-![GitHub issues](https://img.shields.io/github/issues/httpdss/struct)
-![GitHub pull requests](https://img.shields.io/github/issues-pr/httpdss/struct)
-![GitHub stars](https://img.shields.io/github/stars/httpdss/struct?style=social)
+[![codecov](https://codecov.io/github/httpdss/structkit/graph/badge.svg?token=JL5WIO1C9T)](https://codecov.io/github/httpdss/structkit)
+![GitHub issues](https://img.shields.io/github/issues/httpdss/structkit)
+![GitHub pull requests](https://img.shields.io/github/issues-pr/httpdss/structkit)
+![GitHub stars](https://img.shields.io/github/stars/httpdss/structkit?style=social)
 
-**StructKit** is a powerful, flexible tool for automating project structure creation through YAML configurations. Generate consistent project layouts, boilerplate code, and configurations with template variables, remote content fetching, and intelligent file handling.
+**StructKit** replaces copy-pasted boilerplate and aging "golden repos" with reusable YAML structures. It can render template variables, fetch canonical files from remote sources, preview changes before writing, and expose your scaffolds to AI assistants through the Model Context Protocol.
 
-> 📚 **[View Complete Documentation](docs/index.md)** | 🚀 **[Quick Start Guide](docs/quickstart.md)** | 🔧 **[Installation](docs/installation.md)**
+> 🚀 **[Quick Start](docs/quickstart.md)** | 📚 **[Docs](docs/index.md)** | 🧩 **[Examples](examples/)** | 🤖 **[MCP / AI Agent Guide](docs/mcp-integration.md)** | 🧠 **[Agent Skills](docs/agent-skills.md)** | 💬 **[Discussions](https://github.com/httpdss/structkit/discussions)**
+
+## ⚡ Try it in 60 seconds
+
+```bash
+# Install the CLI
+pip install structkit
+
+# Preview available bundled structures
+structkit list
+
+# Generate a ready-made Terraform module scaffold
+structkit generate --vars module_name=my-terraform-module terraform/modules/generic ./my-terraform-module
+```
+
+Prefer Docker?
+
+```bash
+docker run --rm -v "$(pwd):/workdir" ghcr.io/httpdss/structkit:main \
+  generate --vars module_name=my-terraform-module terraform/modules/generic ./my-terraform-module
+```
+
+## 👤 Who StructKit is for
+
+- **Platform / DevEx teams** standardizing service layouts, CI baselines, and engineering conventions across many repos.
+- **DevOps engineers** generating repeatable Terraform modules, Kubernetes manifests, GitHub Actions workflows, and config bundles.
+- **AI coding workflow users** who want assistants to scaffold from approved templates instead of inventing project structure.
+- **Individual developers** tired of rebuilding the same files, folders, and docs for every new project.
+
+## 🤔 Why StructKit?
+
+Project scaffolding tools exist in most ecosystems, but StructKit solves problems the others often leave to copy-paste, template repositories, or custom scripts.
+
+| Feature | cookiecutter | copier | **StructKit** |
+|---|---|---|---|
+| Remote content (GitHub, S3, GCS, HTTP) | ❌ | ❌ | ✅ |
+| AI / MCP integration | ❌ | ❌ | ✅ |
+| Pre/post generation hooks | ✅ | ✅ | ✅ |
+| Dry run mode | ❌ | ✅ | ✅ |
+| YAML-first (no template repo required) | ❌ | ❌ | ✅ |
+| Multiple file conflict strategies | ❌ | ✅ | ✅ |
+| IDE schema validation | ❌ | ❌ | ✅ |
+
+**Key differentiators:**
+
+- **Remote-first content:** Reference your organization's canonical CI template from GitHub directly in your StructKit config. When the template updates, all new projects get the update — no copy-paste maintenance.
+- **AI-native via MCP:** Start the StructKit MCP server so your AI assistant can generate project scaffolds from natural language using your templates as the source of truth.
+- **Agent skill ready:** Install the companion [`httpdss/structkit-skills`](https://github.com/httpdss/structkit-skills) workflow skill so AI assistants consistently inspect, preview, generate, and validate StructKit structures.
+- **YAML-first:** Define structures directly in YAML. No separate template repository is required.
+- **Safe by default:** Use dry-run previews and file conflict strategies before writing into existing projects.
 
 ## ✨ Key Features
 
@@ -22,23 +71,11 @@
 - **✅ Validation & Schema** - Built-in YAML validation and IDE support
 - **🤖 MCP Integration** - Model Context Protocol support for AI-assisted development workflows
 
-## 🚀 Quick Start
-
-### Installation
-
-```bash
-# Install via pip
-pip install structkit
-
-# Or run with Docker
-docker run -v $(pwd):/workdir ghcr.io/httpdss/structkit:main generate my-config.yaml ./output
-```
-
-### Basic Usage
+## 🚀 More usage examples
 
 ```bash
 # Generate a Terraform module structure
-structkit generate terraform-module ./my-terraform-module
+structkit generate --vars module_name=my-terraform-module terraform/modules/generic ./my-terraform-module
 
 # List available structures
 structkit list
@@ -48,7 +85,9 @@ structkit validate my-config.yaml
 
 # Start MCP server for AI integration
 structkit mcp --server
- ```
+```
+
+If StructKit saves you setup time, **star the repo**, try an [example](examples/), or share your use case in [GitHub Discussions](https://github.com/httpdss/structkit/discussions).
 
 ### Example Configuration
 
@@ -96,7 +135,8 @@ Our comprehensive documentation is organized into the following sections:
 - **[Hooks](docs/hooks.md)** - Pre and post-generation automation
 - **[Mappings](docs/mappings.md)** - External data integration
 - **[GitHub Integration](docs/github-integration.md)** - Automation with GitHub Actions
-- **[MCP Integration](docs/mcp-integration.md)** - Model Context Protocol for AI-assisted workflows
+- **[MCP / AI Agent Workflow](docs/mcp-integration.md)** - Model Context Protocol for approved-template scaffolding with AI assistants
+- **[Agent Skills](docs/agent-skills.md)** - Installable StructKit workflow skill for AI assistants
 - **[Command-Line Completion](docs/completion.md)** - Enhanced CLI experience
 
 ### 👩‍💻 Development
@@ -107,7 +147,7 @@ Our comprehensive documentation is organized into the following sections:
 ### 📖 Resources
 
 - **[Articles & Tutorials](docs/articles.md)** - Community content and learning resources
-- **[Examples](example/)** - Practical examples and use cases
+- **[Examples](examples/)** - Practical examples and use cases
 
 ## 🎯 Use Cases
 

@@ -56,7 +56,8 @@ Generate a project structure using specified definition and options.
       "project_name": "MyProject",
       "author": "John Doe"
     },
-    "structures_path": "/path/to/custom/structures"  // optional
+    "structures_path": "/path/to/custom/structures",  // optional
+    "source": "company"  // optional named source
   }
 }
 ```
@@ -68,8 +69,28 @@ Generate a project structure using specified definition and options.
 - `dry_run` (optional): Perform a dry run without creating actual files (default: false)
 - `mappings` (optional): Variable mappings for template substitution
 - `structures_path` (optional): Custom path to structure definitions
+- `source` (optional): Named source configured with `manage_sources`. The structure definition can also use a `<source>/<structure>` prefix.
 
-### 4. validate_structure
+### 4. get_structure_vars
+Inspect variables declared by a specific structure without generating files.
+
+```json
+{
+  "name": "get_structure_vars",
+  "arguments": {
+    "structure_name": "project/python",
+    "structures_path": "/path/to/custom/structures",  // optional
+    "output": "json"  // "text" or "json", optional
+  }
+}
+```
+
+**Parameters:**
+- `structure_name` (required): Name or local YAML path of the structure to inspect
+- `structures_path` (optional): Custom path to structure definitions
+- `output` (optional): Output format - "text" for aligned human-readable output or "json" for machine-readable output (default: "text")
+
+### 5. validate_structure
 Validate a structure configuration YAML file.
 
 ```json
@@ -83,6 +104,69 @@ Validate a structure configuration YAML file.
 
 **Parameters:**
 - `yaml_file` (required): Path to the YAML configuration file to validate
+
+### 6. lint_structure
+Lint one or more structure YAML files or structure names for quality and safety issues.
+
+```json
+{
+  "name": "lint_structure",
+  "arguments": {
+    "targets": ["project/python", "/path/to/.struct.yaml"],
+    "structures_path": "/path/to/custom/structures",
+    "lint_all": false,
+    "output": "json"
+  }
+}
+```
+
+**Parameters:**
+- `targets` (optional): YAML file paths or structure names to lint. Required unless `lint_all` is true.
+- `structures_path` (optional): Custom path to structure definitions.
+- `lint_all` (optional): Lint all bundled contrib structures (default: false).
+- `output` (optional): Output format - "text" or "json" (default: "text").
+
+
+### 7. graph_structure
+Visualize structure dependencies from `folders[].struct` references as text, JSON, or Mermaid. The tool reports nested dependencies, missing references, and cycles.
+
+```json
+{
+  "name": "graph_structure",
+  "arguments": {
+    "structure_definition": "project/python",
+    "structures_path": "/path/to/custom/structures",
+    "graph_all": false,
+    "output": "mermaid"
+  }
+}
+```
+
+**Parameters:**
+- `structure_definition` (optional): Structure name or local YAML file to graph. Required unless `graph_all` is true.
+- `structures_path` (optional): Custom path to structure definitions.
+- `graph_all` (optional): Graph all available structures (default: false).
+- `output` (optional): Output format - "text", "json", or "mermaid" (default: "text").
+
+### 8. manage_sources
+Manage named structure sources. Sources can point at local directories, GitHub repositories, or git URLs. Git-backed sources are cloned into the StructKit sources cache and refreshed when resolved or validated.
+
+```json
+{
+  "name": "manage_sources",
+  "arguments": {
+    "action": "add",
+    "name": "platform",
+    "path_or_url": "github://httpdss/platform-structures@v1/structures"
+  }
+}
+```
+
+**Parameters:**
+- `action` (required): One of `list`, `add`, `remove`, `show`, or `validate`.
+- `name` (required except for `list`): Source name.
+- `path_or_url` (required for `add`): Local directory, GitHub shorthand (`owner/repo`), `github://owner/repo`, or git URL.
+- `config_path` (optional): Override the sources config file for this request.
 
 ## Usage
 
@@ -227,6 +311,7 @@ The MCP tools can be chained together for complex workflows:
 2. Get detailed info about a specific structure
 3. Generate the structure with custom mappings
 4. Validate any custom configurations
+5. Lint structures for stricter quality and safety checks
 
 ### Integration Examples
 
@@ -261,6 +346,160 @@ The MCP tools can be chained together for complex workflows:
   "arguments": {
     "structure_definition": "file:///path/to/custom-structure.yaml",
     "base_path": "/tmp/project"
+  }
+}
+```
+
+## End-to-end AI assistant workflow
+
+Use this flow when you want an AI assistant to scaffold from an approved
+StructKit template instead of inventing a repository layout from scratch. The
+assistant should inspect available templates, choose one with you, preview the
+generated files, and only then write to disk.
+
+### 1. Start the MCP server
+
+For local MCP clients that launch tools over stdio, use:
+
+```bash
+structkit mcp --server --transport stdio
+```
+
+For a long-running local HTTP endpoint during development, use:
+
+```bash
+structkit mcp --server --transport http --host 127.0.0.1 --port 9000 --path /mcp
+```
+
+### 2. Give the assistant a scoped prompt
+
+```text
+Use StructKit templates as the source of truth. List available structures,
+inspect the Terraform module template, preview the generated output for a module
+named "network-observability", and only write files after I approve the preview.
+```
+
+This prompt keeps the model on the approved-template path: discover, inspect,
+preview, then generate.
+
+### 3. List templates and inspect the chosen one
+
+First, the assistant can discover the bundled templates:
+
+```json
+{
+  "name": "list_structures",
+  "arguments": {}
+}
+```
+
+Then it can inspect the Terraform module scaffold:
+
+```json
+{
+  "name": "get_structure_info",
+  "arguments": {
+    "structure_name": "terraform/modules/generic"
+  }
+}
+```
+
+For required variables, ask for the variable schema before generating:
+
+```json
+{
+  "name": "get_structure_vars",
+  "arguments": {
+    "structure_name": "terraform/modules/generic",
+    "output": "json"
+  }
+}
+```
+
+The bundled `terraform/modules/generic` structure declares `module_name`, so the
+assistant should provide that value instead of guessing during generation.
+
+### 4. Preview generated output
+
+Use `output: "console"` to render the structure into the chat or tool result
+without writing files:
+
+```json
+{
+  "name": "generate_structure",
+  "arguments": {
+    "structure_definition": "terraform/modules/generic",
+    "base_path": "/tmp/structkit-preview/network-observability",
+    "output": "console",
+    "dry_run": true,
+    "mappings": {
+      "module_name": "network-observability"
+    }
+  }
+}
+```
+
+Review the preview for the expected source-of-truth files:
+
+- `main.tf`
+- `variables.tf`
+- `outputs.tf`
+- `versions.tf`
+- `README.md`
+
+If the preview is not right, adjust the selected structure or mappings rather
+than asking the assistant to hand-edit a bespoke layout.
+
+### 5. Generate approved files
+
+After approval, call the same structure with `output: "files"` and
+`dry_run: false`:
+
+```json
+{
+  "name": "generate_structure",
+  "arguments": {
+    "structure_definition": "terraform/modules/generic",
+    "base_path": "./modules/network-observability",
+    "output": "files",
+    "dry_run": false,
+    "mappings": {
+      "module_name": "network-observability"
+    }
+  }
+}
+```
+
+The generated project structure now comes from the checked-in StructKit template.
+Future changes to the scaffold should happen in the YAML definition, not as
+one-off AI-generated folder edits.
+
+### 6. Validate custom templates
+
+If your team stores its own templates, point the MCP tools at that directory:
+
+```json
+{
+  "name": "validate_structure",
+  "arguments": {
+    "yaml_file": "/path/to/company-structures/terraform/modules/service.yaml"
+  }
+}
+```
+
+Then generate from the same source of truth:
+
+```json
+{
+  "name": "generate_structure",
+  "arguments": {
+    "structure_definition": "terraform/modules/service",
+    "structures_path": "/path/to/company-structures",
+    "base_path": "./modules/service-a",
+    "output": "files",
+    "mappings": {
+      "module_name": "service-a"
+    }
   }
 }
 ```
@@ -353,7 +592,9 @@ Once connected, you can use these tools:
 - `list_structures` - Get all available structures
 - `get_structure_info` - Get details about a specific structure
 - `generate_structure` - Generate project structures
+- `get_structure_vars` - Inspect declared structure variables
 - `validate_structure` - Validate YAML configuration files
+- `lint_structure` - Lint YAML files or structure names for quality and safety issues
 
 ## Troubleshooting
 

@@ -5,10 +5,16 @@ from dotenv import load_dotenv
 from structkit.utils import read_config_file, merge_configs
 from structkit.commands.generate import GenerateCommand
 from structkit.commands.info import InfoCommand
+from structkit.commands.vars import VarsCommand
+from structkit.commands.explain import ExplainCommand
 from structkit.commands.validate import ValidateCommand
+from structkit.commands.lint import LintCommand
 from structkit.commands.list import ListCommand
+from structkit.commands.search import SearchCommand
+from structkit.commands.graph import GraphCommand
 from structkit.commands.generate_schema import GenerateSchemaCommand
 from structkit.commands.mcp import MCPCommand
+from structkit.commands.sources import SourcesCommand
 from structkit.logging_config import configure_logging
 
 # Optional dependency: shtab for static shell completion generation
@@ -32,10 +38,16 @@ def get_parser():
 
     InfoCommand(subparsers.add_parser('info', help='Show information about the package'))
     ValidateCommand(subparsers.add_parser('validate', help='Validate the YAML configuration file'))
+    LintCommand(subparsers.add_parser('lint', help='Lint structure YAML files for quality issues'))
     GenerateCommand(subparsers.add_parser('generate', help='Generate the project structure'))
+    VarsCommand(subparsers.add_parser('vars', help='Inspect structure variables'))
+    ExplainCommand(subparsers.add_parser('explain', help='Explain structure resolution without generating files'))
     ListCommand(subparsers.add_parser('list', help='List available structures'))
+    SearchCommand(subparsers.add_parser('search', help='Search available structures by keyword'))
+    GraphCommand(subparsers.add_parser('graph', help='Visualize structure dependencies'))
     GenerateSchemaCommand(subparsers.add_parser('generate-schema', help='Generate JSON schema for available structures'))
     MCPCommand(subparsers.add_parser('mcp', help='MCP (Model Context Protocol) support'))
+    SourcesCommand(subparsers.add_parser('sources', help='Manage named custom structure sources'))
 
     # init to create a basic .struct.yaml
     from structkit.commands.init import InitCommand

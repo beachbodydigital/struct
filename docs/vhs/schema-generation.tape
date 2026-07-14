@@ -1,7 +1,8 @@
 Output docs/vhs/schema-generation.gif
 
 Set Theme "Monokai Vivid"
-Set FontSize 14
+Set Font "JetBrainsMono Nerd Font"
+Set FontSize 18
 Set TypingSpeed 40ms
 Set Width 1400
 Set Height 800
@@ -10,6 +11,10 @@ Set Shell "bash"
 Type "# StructKit Schema Generation Demo"
 Enter
 Sleep 1s
+
+Type "source .venv/bin/activate"
+Enter
+Sleep 500ms
 
 Type "# Generate JSON schema for VSCode autocompletion"
 Enter
